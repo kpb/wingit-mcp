@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "owner": "Example Birder",
+    "source": "eBird personal data export (normalized)",
+    "generatedAt": "2025-10-21T12:00:00Z",
+    "totalObservations": 12,
+    "totalSpecies": 2,
+    "firstChecklistDate": "2018-05-01"
+  },
+  "sightings": [
+    {
+      "speciesCode": "clanut",
+      "commonName": "Clark's Nutcracker",
+      "sciName": "Nucifraga columbiana",
+      "obsDt": "2025-09-12",
+      "locName": "Aspen Vista",
+      "locId": "L654321",
+      "countyCode": "US-NM-049",
+      "lat": 35.76,
+      "lng": -105.80,
+      "count": 2,
+      "obsValid": true,
+      "obsReviewed": false,
+      "media": false,
+      "enteredAsHeardOnly": false,
+      "checklistId": "S100000001"
+    },
+    {
+      "speciesCode": "amgold",
+      "commonName": "American Goldfinch",
+      "sciName": "Spinus tristis",
+      "obsDt": "2024-06-10",
+      "locName": "Santa Fe River Trail",
+      "locId": "L998877",
+      "countyCode": "US-NM-049",
+      "lat": 35.68,
+      "lng": -105.95,
+      "count": 3,
+      "obsValid": true,
+      "obsReviewed": false,
+      "media": false,
+      "enteredAsHeardOnly": false,
+      "checklistId": "S100000002"
+    }
+  ],
+  "speciesIndex": [
+    {
+      "speciesCode": "clanut",
+      "commonName": "Clark's Nutcracker",
+      "sciName": "Nucifraga columbiana",
+      "firstSeen": "2018-05-01",
+      "lastSeen": "2025-09-12",
+      "totalChecklists": 6,
+      "totalCount": 11,
+      "locations": ["L654321"]
+    },
+    {
+      "speciesCode": "amgold",
+      "commonName": "American Goldfinch",
+      "sciName": "Spinus tristis",
+      "firstSeen": "2019-07-15",
+      "lastSeen": "2024-06-10",
+      "totalChecklists": 4,
+      "totalCount": 9,
+      "locations": ["L998877"]
+    }
+  ]
+}

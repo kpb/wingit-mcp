@@ -1,0 +1,53 @@
+# -------------------------
+# Go / build artifacts
+# -------------------------
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go coverage & test outputs
+coverage.out
+coverage.html
+junit.xml
+test-results/
+
+# Logs
+*.log
+
+# -------------------------
+# Local config / env
+# -------------------------
+.env
+.env.*
+
+# -------------------------
+# Editors / IDE
+# -------------------------
+.vscode/
+.idea/
+*.code-workspace
+
+# -------------------------
+# OS cruft
+# -------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# -------------------------
+# Data (personal exports)
+# Keep sample/fixture data tracked; ignore raw personal dumps.
+# -------------------------
+data/*.csv
+data/*.xlsx
+data/personal/*
+# Keep example fixtures
+!data/personal_checklist_example.json
+!data/recent_nearby_example.json
