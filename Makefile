@@ -24,12 +24,12 @@ tidy: ## 🧹 go mod tidy
 test: ## 🧪 Run tests with race detector and coverage
 	@echo "🧪 Running tests..."
 	@if command -v gotestsum >/dev/null 2>&1; then \
-	  gotestsum --format=short-verbose -- -race -covermode=atomic -coverprofile=coverage.out ./...; \
+	  gotestsum --format=short-verbose -- -count=1 -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...; \
 	else \
-	  go test -race -covermode=atomic -coverprofile=coverage.out ./...; \
+	  go test -count=1 -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...; \
 	fi
 	@echo "📈 Coverage summary:"; \
-	go tool cover -func=coverage.out | tail -n 1
+	go tool cover -func=coverage.out 
 
 test-cover: test ## 📊 Generate HTML coverage report
 	@go tool cover -html=coverage.out -o coverage.html

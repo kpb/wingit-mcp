@@ -1,0 +1,38 @@
+[
+  {
+    "speciesCode": "lewo",
+    "comName": "Lewis's Woodpecker",
+    "sciName": "Melanerpes lewis",
+    "locName": "Hyde Park Rd",
+    "locId": "L123456",
+    "obsDt": "2025-10-06",
+    "howr": false
+  },
+  {
+    "speciesCode": "clanut",
+    "comName": "Clark's Nutcracker",
+    "sciName": "Nucifraga columbiana",
+    "locName": "Aspen Vista",
+    "locId": "L654321",
+    "obsDt": "2025-10-06",
+    "howr": false
+  },
+  {
+    "speciesCode": "caltow",
+    "comName": "Canyon Towhee",
+    "sciName": "Melozone fusca",
+    "locName": "Rail Trail",
+    "locId": "L222222",
+    "obsDt": "2025-10-05",
+    "howr": true
+  },
+  {
+    "speciesCode": "pinsis",
+    "comName": "Pine Siskin",
+    "sciName": "Spinus pinus",
+    "locName": "Santa Fe River Trail",
+    "locId": "L998877",
+    "obsDt": "2025-10-04",
+    "howr": false
+  }
+]
