@@ -10,6 +10,7 @@ import (
 	it "github.com/kpb/wingit-mcp/internal/types"
 )
 
+// LoadPersonalChecklist reads an E-Bird personal checklist JSON file at path into a PersonalChecklist.
 func LoadPersonalChecklist(path string) (*it.PersonalChecklist, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -23,6 +24,7 @@ func LoadPersonalChecklist(path string) (*it.PersonalChecklist, error) {
 	return &pc, nil
 }
 
+// LoadRecentNearby reads recent nearby observations JSON and returns the decoded observations.
 func LoadRecentNearby(path string) ([]it.RecentObservation, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -36,6 +38,7 @@ func LoadRecentNearby(path string) ([]it.RecentObservation, error) {
 	return rows, nil
 }
 
+// BuildPersonalSeenSet builds a set keyed by species code for quick lookup of seen birds.
 func BuildPersonalSeenSet(pc *it.PersonalChecklist) map[string]struct{} {
 	seen := make(map[string]struct{}, len(pc.SpeciesIndex))
 	if len(pc.SpeciesIndex) > 0 {
