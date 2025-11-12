@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/kpb/wingit-mcp/internal/ebird"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -40,6 +41,20 @@ func main() {
 	// IMPORTANT: stdio servers must not write to stdout; use stderr for logs. :contentReference[oaicite:1]{index=1}
 	logger := log.New(os.Stderr, "wingit-mcp: ", log.LstdFlags|log.Lmsgprefix)
 
+	// --- Config: load personal checklist path from env, build seen set ---
+	personalPath := os.Getenv("WINGIT_PERSONAL_JSON")
+	if personalPath == "" {
+		logger.Printf("ERROR: WINGIT_PERSONAL_JSON is not set")
+		os.Exit(2)
+	}
+	pc, err := ebird.LoadPersonalChecklist(personalPath)
+	if err != nil {
+		logger.Printf("ERROR: LoadPersonalChecklist(%q): %v", personalPath, err)
+		os.Exit(2)
+	}
+	seen := ebird.BuildPersonalSeenSet(pc)
+	logger.Printf("loaded personal checklist: species=%d (seen set size)", len(seen))
+
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "wingit-mcp",
 		Version: "0.1.0",
@@ -51,6 +66,9 @@ func main() {
 		Name:        "target_checklist",
 		Description: "Return likely new lifers near a location by comparing recent eBird observations with your personal history.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args targetArgs) (*mcp.CallToolResult, any, error) {
+		// 'seen' is captured from main() scope. For now we only echo its size.
+		_ = seen
+
 		// TODO: wire to personal eBird CSV+index and eBird API client.
 		// For now, return a tiny, deterministic stub so hosts can demo it.
 
