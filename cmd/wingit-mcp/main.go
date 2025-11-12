@@ -2,11 +2,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 
-	"github.com/kpb/wingit-mcp/internal/ebird"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/kpb/wingit-mcp/internal/ebird"
+	"github.com/kpb/wingit-mcp/internal/tools"
+	it "github.com/kpb/wingit-mcp/internal/types"
 )
 
 type targetArgs struct {
@@ -65,38 +69,73 @@ func main() {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "target_checklist",
 		Description: "Return likely new lifers near a location by comparing recent eBird observations with your personal history.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, args targetArgs) (*mcp.CallToolResult, any, error) {
-		// 'seen' is captured from main() scope. For now we only echo its size.
-		_ = seen
-
-		// TODO: wire to personal eBird CSV+index and eBird API client.
-		// For now, return a tiny, deterministic stub so hosts can demo it.
-
-		out := targetResult{
-			Targets: []struct {
-				SpeciesCode     string  `json:"speciesCode"`
-				CommonName      string  `json:"commonName"`
-				SciName         string  `json:"sciName"`
-				RecentFrequency float64 `json:"recentFrequency"`
-				LastSeenNearby  string  `json:"lastSeenNearby,omitempty"`
-			}{
-				{"clanut", "Clark's Nutcracker", "Nucifraga columbiana", 0.21, "2025-10-06"},
-			},
-			ExcludedBecauseAlreadySeen: 182,
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args tools.TargetArgs) (*mcp.CallToolResult, any, error) {
+		// Load "recent nearby" from env JSON (offline demo path for now).
+		recentPath := os.Getenv("WINGIT_RECENT_JSON")
+		var recent []it.RecentObservation
+		if recentPath != "" {
+			rows, err := ebird.LoadRecentNearby(recentPath)
+			if err != nil {
+				// Fail softly: log and continue with empty recent data.
+				logger.Printf("WARN: LoadRecentNearby(%q): %v (continuing with empty recent)", recentPath, err)
+			} else {
+				recent = rows
+			}
+		} else {
+			logger.Printf("INFO: WINGIT_RECENT_JSON not set; continuing with empty recent")
 		}
-		out.Filters.Location = args.Location
-		out.Filters.RadiusKm = args.RadiusKm
-		out.Filters.DaysBack = args.DaysBack
-		out.Filters.IncludeHeardOnly = args.IncludeHeardOnly
-		out.Filters.MinFrequency = args.MinFrequency
-		out.Filters.MaxSpecies = args.MaxSpecies
 
-		// Text content for quick UX in hosts; JSON “out” for structured consumers.
+		// Adapt internal/types -> engine's RecentObservation
+		engineRecent := make([]tools.RecentObservation, 0, len(recent))
+		for _, r := range recent {
+			engineRecent = append(engineRecent, tools.RecentObservation{
+				SpeciesCode: r.SpeciesCode,
+				CommonName:  r.CommonName,
+				SciName:     r.SciName,
+				LocName:     r.LocName,
+				LocID:       r.LocID,
+				ObsDt:       r.ObsDt,
+				HeardOnly:   r.HeardOnly,
+			})
+		}
+
+		// Call the pure engine.
+		out, err := tools.BuildTargetChecklist(ctx, args, seen, engineRecent)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Human-friendly text summary for host UI.
+		summary := "WingIt-MCP: no candidate lifers"
+		if n := len(out.Targets); n > 0 {
+			top := out.Targets[0].CommonName
+			summary = os.ExpandEnv(
+				// Example: “3 candidate lifers; top: Lewis's Woodpecker”
+				// (short and useful in the host’s call result view)
+				// not actually using env vars here; ExpandEnv is a no-op—just compact code.
+				// Feel free to format however you like.
+				// Avoid stdout; host reads JSON-RPC on stdout.
+				// Logging already goes to stderr via logger above.
+				// Return structured JSON too (second return value).
+				// Hosts that understand MCP structured content can render tables.
+				// Others will still show the text content.
+				// Keep it brief and actionable.
+				// n.b.: You can add more details later (e.g., location hints).
+				"",
+			)
+			summary = // short, explicit:
+				func(n int, top string) string {
+					return fmt.Sprintf("%d candidate lifers; top: %s", n, top)
+				}(n, top)
+		}
+
 		res := &mcp.CallToolResult{
 			Content: []mcp.Content{
-				&mcp.TextContent{Text: "WingIt-MCP: 1 candidate lifer → Clark's Nutcracker (seen nearby 2025-10-06)"},
+				&mcp.TextContent{Text: summary},
 			},
 		}
+
+		// Return both: user-facing text and structured JSON (engine result).
 		return res, out, nil
 	})
 

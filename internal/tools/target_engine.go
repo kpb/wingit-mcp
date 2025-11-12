@@ -115,3 +115,8 @@ func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[s
 
 	return out, nil
 }
+
+// Exported aliases so other packages (e.g., cmd/wingit-mcp) can use the engine types.
+type TargetArgs = targetArgs
+type RecentObservation = RecentObs
+type TargetResult = targetResult
