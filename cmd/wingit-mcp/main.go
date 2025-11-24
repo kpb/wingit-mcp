@@ -6,9 +6,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/kpb/wingit-mcp/internal/prompts"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/kpb/wingit-mcp/internal/ebird"
+	mcpi "github.com/kpb/wingit-mcp/internal/mcp"
 	"github.com/kpb/wingit-mcp/internal/tools"
 	it "github.com/kpb/wingit-mcp/internal/types"
 )
@@ -96,10 +98,11 @@ func main() {
 	}, nil)
 
 	// Register prompts before tools so the host sees them on initialize.
-	registerPrompts(s)
+	prompts.Register(s)
+	mcpi.RegisterResources(s, pc)
 
 	// Register the target_checklist tool.
-	// The SDK infers JSON Schema for input/output from the types you use. :contentReference[oaicite:2]{index=2}
+	// The SDK infers JSON Schema for input/output from the types you use.
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "target_checklist",
 		Description: "Return likely new lifers near a location by comparing recent eBird observations with your personal history.",
@@ -173,11 +176,7 @@ func main() {
 		return res, out, nil
 	})
 
-	// TODO: Add prompts/resources next:
-	// mcp.AddPrompt(s, ...)
-	// mcp.AddResource(s, ...) or use resource templates per SDK capabilities.
-
-	// Run the server on stdio transport. :contentReference[oaicite:3]{index=3}
+	// Run the server on stdio transport.
 	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		logger.Printf("server failed: %v", err)
 	}
