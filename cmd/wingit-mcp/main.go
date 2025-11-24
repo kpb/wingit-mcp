@@ -13,32 +13,63 @@ import (
 	it "github.com/kpb/wingit-mcp/internal/types"
 )
 
-type targetArgs struct {
-	Location         string  `json:"location" jsonschema:"Place name, hotspot code (L123...), or 'lat,lon'"`
-	RadiusKm         float64 `json:"radiusKm" jsonschema:"Search radius in kilometers" default:"20"`
-	DaysBack         int     `json:"daysBack" jsonschema:"How far back to look for recent obs" default:"7"`
-	IncludeHeardOnly bool    `json:"includeHeardOnly" default:"false"`
-	MinFrequency     float64 `json:"minFrequency" jsonschema:"0..1 recent proportion threshold" default:"0.05"`
-	MaxSpecies       int     `json:"maxSpecies" jsonschema:"Cap results" default:"40"`
-}
+func registerPrompts(s *mcp.Server) {
+	prompt := &mcp.Prompt{
+		Name:        "field_checklist",
+		Description: "Format WingIt target_checklist results as a printable field checklist.",
+		Arguments: []*mcp.PromptArgument{
+			{
+				Name:        "location",
+				Description: "Name of the birding location or general area.",
+				Required:    true,
+			},
+			{
+				Name:        "dayRange",
+				Description: "How far back the recent observations go (e.g. 'last 7 days').",
+				Required:    false,
+			},
+		},
+	}
 
-type targetResult struct {
-	Targets []struct {
-		SpeciesCode     string  `json:"speciesCode"`
-		CommonName      string  `json:"commonName"`
-		SciName         string  `json:"sciName"`
-		RecentFrequency float64 `json:"recentFrequency"`
-		LastSeenNearby  string  `json:"lastSeenNearby,omitempty"`
-	} `json:"targets"`
-	Filters struct {
-		Location         string  `json:"location"`
-		RadiusKm         float64 `json:"radiusKm"`
-		DaysBack         int     `json:"daysBack"`
-		IncludeHeardOnly bool    `json:"includeHeardOnly"`
-		MinFrequency     float64 `json:"minFrequency"`
-		MaxSpecies       int     `json:"maxSpecies"`
-	} `json:"filters"`
-	ExcludedBecauseAlreadySeen int `json:"excludedBecauseAlreadySeen"`
+	promptHandler := func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		args := req.Params.Arguments
+		loc := args["location"]
+		dayRange := args["dayRange"]
+
+		if loc == "" {
+			loc = "this area"
+		}
+		if dayRange == "" {
+			dayRange = "the recent period"
+		}
+
+		text := fmt.Sprintf(
+			`You are a birding assistant. The user has just called the WingIt-MCP tool "target_checklist" to get likely new lifers near %s for %s.
+
+Using the tool output provided in this conversation (JSON with "targets" and "filters"), produce a concise, printable field checklist:
+
+- Focus only on likely lifers (the "targets" array).
+- Group species by approximate recent frequency (high / medium / low) based on "recentFrequency".
+- For each species, show: common name, scientific name, and a short note like "seen recently at <locName>" if present.
+- Keep it compact, suitable for printing or quick reference in the field.
+- Do not reprint the raw JSON; summarize it.
+
+If there are no targets, explain that there are no likely new lifers for this query and suggest broadening radius or daysBack.`, loc, dayRange)
+
+		return &mcp.GetPromptResult{
+			Description: "Format WingIt target_checklist results as a printable field checklist.",
+			Messages: []*mcp.PromptMessage{
+				{
+					Role: "user",
+					Content: &mcp.TextContent{
+						Text: text,
+					},
+				},
+			},
+		}, nil
+	}
+
+	s.AddPrompt(prompt, promptHandler)
 }
 
 func main() {
@@ -63,6 +94,9 @@ func main() {
 		Name:    "wingit-mcp",
 		Version: "0.1.0",
 	}, nil)
+
+	// Register prompts before tools so the host sees them on initialize.
+	registerPrompts(s)
 
 	// Register the target_checklist tool.
 	// The SDK infers JSON Schema for input/output from the types you use. :contentReference[oaicite:2]{index=2}
