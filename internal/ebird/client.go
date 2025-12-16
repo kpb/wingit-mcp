@@ -76,7 +76,7 @@ func (c *Client) RecentNearby(
 		return nil, fmt.Errorf("%w: missing API token", ErrUnauthorized)
 	}
 
-	// Clamp to eBird documented ranges (engine may normalize too).
+	// Clamp to eBird documented ranges (engine may normalize too)
 	if backDays < 1 {
 		backDays = 1
 	} else if backDays > 30 {

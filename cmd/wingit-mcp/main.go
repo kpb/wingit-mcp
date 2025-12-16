@@ -75,7 +75,7 @@ If there are no targets, explain that there are no likely new lifers for this qu
 }
 
 func main() {
-	// IMPORTANT: stdio servers must not write to stdout; use stderr for logs. :contentReference[oaicite:1]{index=1}
+	// IMPORTANT: stdio servers must not write to stdout; use stderr for logs
 	logger := log.New(os.Stderr, "wingit-mcp: ", log.LstdFlags|log.Lmsgprefix)
 
 	// --- Config: load personal checklist path from env, build seen set ---
