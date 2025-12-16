@@ -2,7 +2,9 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -46,11 +48,31 @@ type targetResult struct {
 	ExcludedBecauseAlreadySeen int
 }
 
+// Exported aliases so other packages (cmd/wingit-mcp) can use engine types.
+type TargetArgs = targetArgs
+type RecentObservation = RecentObs
+type TargetResult = targetResult
+
+const (
+	defaultRadiusKm   = 20.0
+	defaultDaysBack   = 7
+	defaultMaxSpecies = 40
+)
+
 // BuildTargetChecklist is the pure engine the MCP tool will call.
 // This minimal implementation passes the tests and is a sane starting point.
 // Ranking: by RecentFrequency (desc), then by recency (ObsDt desc), then stable.
 func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[string]struct{}, recent []RecentObs) (targetResult, error) {
 	var out targetResult
+
+	// Hard validation: we require *some* location string.
+	if strings.TrimSpace(args.Location) == "" {
+		return out, fmt.Errorf("location is required")
+	}
+
+	// Soft validation: normalize obviously bad numeric inputs.
+	args = normalizeArgs(args)
+
 	out.Filters.Location = args.Location
 	out.Filters.RadiusKm = args.RadiusKm
 	out.Filters.DaysBack = args.DaysBack
@@ -73,16 +95,19 @@ func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[s
 		if !args.IncludeHeardOnly && r.HeardOnly {
 			continue
 		}
-		// freq is a stub for now (fixtures/tests don’t supply it).
+
+		// For now, frequency is a stubbed constant until we wire real stats.
 		freq := 0.20
 		if freq < args.MinFrequency {
 			continue
 		}
+
 		var t time.Time
 		if r.ObsDt != "" {
 			// Accept YYYY-MM-DD; ignore parse errors (zero time sorts last).
 			t, _ = time.Parse("2006-01-02", r.ObsDt)
 		}
+
 		rows = append(rows, row{
 			TargetRow: TargetRow{
 				SpeciesCode:     r.SpeciesCode,
@@ -108,6 +133,7 @@ func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[s
 	if args.MaxSpecies > 0 && limit > args.MaxSpecies {
 		limit = args.MaxSpecies
 	}
+
 	out.Targets = make([]TargetRow, 0, limit)
 	for k := 0; k < limit; k++ {
 		out.Targets = append(out.Targets, rows[k].TargetRow)
@@ -116,7 +142,22 @@ func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[s
 	return out, nil
 }
 
-// Exported aliases so other packages (e.g., cmd/wingit-mcp) can use the engine types.
-type TargetArgs = targetArgs
-type RecentObservation = RecentObs
-type TargetResult = targetResult
+// normalizeArgs clamps obviously bad numeric values to sane defaults.
+func normalizeArgs(a targetArgs) targetArgs {
+	if a.RadiusKm <= 0 {
+		a.RadiusKm = defaultRadiusKm
+	}
+	if a.DaysBack <= 0 {
+		a.DaysBack = defaultDaysBack
+	}
+	if a.MaxSpecies <= 0 {
+		a.MaxSpecies = defaultMaxSpecies
+	}
+	if a.MinFrequency < 0 {
+		a.MinFrequency = 0
+	}
+	if a.MinFrequency > 1 {
+		a.MinFrequency = 1
+	}
+	return a
+}

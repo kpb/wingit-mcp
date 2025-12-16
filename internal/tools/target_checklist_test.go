@@ -93,3 +93,21 @@ func Test_build_target_checklist_respects_max_species_cap(t *testing.T) {
 			got.Targets[0].SpeciesCode, got.Targets[1].SpeciesCode, wantOrder[0], wantOrder[1])
 	}
 }
+
+func Test_build_target_checklist_rejects_empty_location(t *testing.T) {
+	t.Parallel()
+
+	args := targetArgs{
+		Location:         "",
+		RadiusKm:         10,
+		DaysBack:         5,
+		IncludeHeardOnly: false,
+		MinFrequency:     0.0,
+		MaxSpecies:       10,
+	}
+
+	_, err := BuildTargetChecklist(context.Background(), args, map[string]struct{}{}, nil)
+	if err == nil {
+		t.Fatalf("expected error for empty location, got nil")
+	}
+}
