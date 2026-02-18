@@ -1,7 +1,7 @@
 # Default target
 .DEFAULT_GOAL := help
 
-.PHONY: build run fmt lint tidy clean test test-cover open-cover help
+.PHONY: build run fmt lint staticcheck tidy clean test test-cover open-cover help
 
 BINARY := wingit-mcp
 
@@ -14,8 +14,17 @@ run: build ## Run (normally your MCP host launches this)
 fmt: ## go fmt
 	@go fmt ./...
 
-lint: ## go vet
-	@go vet ./...
+lint: ## go vet + staticcheck
+	@GOCACHE=/tmp/go-build go vet ./...
+	@$(MAKE) staticcheck
+
+staticcheck: ## Run staticcheck
+	@if command -v staticcheck >/dev/null 2>&1; then \
+	  XDG_CACHE_HOME=/tmp GOCACHE=/tmp/go-build staticcheck ./...; \
+	else \
+	  echo "staticcheck not found. Install with: go install honnef.co/go/tools/cmd/staticcheck@latest"; \
+	  exit 1; \
+	fi
 
 tidy: ## go mod tidy
 	@go mod tidy

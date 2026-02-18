@@ -17,65 +17,6 @@ import (
 	it "github.com/kpb/wingit-mcp/internal/types"
 )
 
-func registerPrompts(s *mcp.Server) {
-	prompt := &mcp.Prompt{
-		Name:        "field_checklist",
-		Description: "Format WingIt target_checklist results as a printable field checklist.",
-		Arguments: []*mcp.PromptArgument{
-			{
-				Name:        "location",
-				Description: "Name of the birding location or general area.",
-				Required:    true,
-			},
-			{
-				Name:        "dayRange",
-				Description: "How far back the recent observations go (e.g. 'last 7 days').",
-				Required:    false,
-			},
-		},
-	}
-
-	promptHandler := func(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		args := req.Params.Arguments
-		loc := args["location"]
-		dayRange := args["dayRange"]
-
-		if loc == "" {
-			loc = "this area"
-		}
-		if dayRange == "" {
-			dayRange = "the recent period"
-		}
-
-		text := fmt.Sprintf(
-			`You are a birding assistant. The user has just called the WingIt-MCP tool "target_checklist" to get likely new lifers near %s for %s.
-
-Using the tool output provided in this conversation (JSON with "targets" and "filters"), produce a concise, printable field checklist:
-
-- Focus only on likely lifers (the "targets" array).
-- Group species by approximate recent frequency (high / medium / low) based on "recentFrequency".
-- For each species, show: common name, scientific name, and a short note like "seen recently at <locName>" if present.
-- Keep it compact, suitable for printing or quick reference in the field.
-- Do not reprint the raw JSON; summarize it.
-
-If there are no targets, explain that there are no likely new lifers for this query and suggest broadening radius or daysBack.`, loc, dayRange)
-
-		return &mcp.GetPromptResult{
-			Description: "Format WingIt target_checklist results as a printable field checklist.",
-			Messages: []*mcp.PromptMessage{
-				{
-					Role: "user",
-					Content: &mcp.TextContent{
-						Text: text,
-					},
-				},
-			},
-		}, nil
-	}
-
-	s.AddPrompt(prompt, promptHandler)
-}
-
 func parseLatLon(input string) (float64, float64, error) {
 	parts := strings.Split(strings.TrimSpace(input), ",")
 	if len(parts) != 2 {
@@ -182,20 +123,6 @@ func main() {
 		summary := "WingIt-MCP: no candidate lifers"
 		if n := len(out.Targets); n > 0 {
 			top := out.Targets[0].CommonName
-			summary = os.ExpandEnv(
-				// Example: “3 candidate lifers; top: Lewis's Woodpecker”
-				// (short and useful in the host’s call result view)
-				// not actually using env vars here; ExpandEnv is a no-op—just compact code.
-				// Feel free to format however you like.
-				// Avoid stdout; host reads JSON-RPC on stdout.
-				// Logging already goes to stderr via logger above.
-				// Return structured JSON too (second return value).
-				// Hosts that understand MCP structured content can render tables.
-				// Others will still show the text content.
-				// Keep it brief and actionable.
-				// n.b.: You can add more details later (e.g., location hints).
-				"",
-			)
 			summary = // short, explicit:
 				func(n int, top string) string {
 					return fmt.Sprintf("%d candidate lifers; top: %s", n, top)
