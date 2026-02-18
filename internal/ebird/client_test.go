@@ -166,3 +166,76 @@ func TestClient_RecentNearby_HeardOnlyHowr(t *testing.T) {
 		t.Fatalf("HeardOnly=%v, want true", obs[0].HeardOnly)
 	}
 }
+
+func TestNewClientFromEnv_MissingToken(t *testing.T) {
+	t.Setenv("WINGIT_EBIRD_TOKEN", "")
+
+	_, err := NewClientFromEnv()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+}
+
+func TestClient_RecentNearby_RateLimitPacing(t *testing.T) {
+	const token = "test-token"
+	const minInterval = 120 * time.Millisecond
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(token,
+		WithBaseURL(srv.URL),
+		WithHTTPClient(&http.Client{Timeout: 2 * time.Second}),
+		WithMinInterval(minInterval),
+	)
+
+	if _, err := c.RecentNearby(context.Background(), 40.00, -105.00, 10, 7, 25); err != nil {
+		t.Fatalf("RecentNearby error: %v", err)
+	}
+
+	start := time.Now()
+	if _, err := c.RecentNearby(context.Background(), 40.00, -105.00, 10, 7, 25); err != nil {
+		t.Fatalf("RecentNearby error: %v", err)
+	}
+
+	if elapsed := time.Since(start); elapsed < minInterval-(20*time.Millisecond) {
+		t.Fatalf("pacing too short: %v < %v", elapsed, minInterval)
+	}
+}
+
+func TestClient_RecentNearby_RateLimitRespectsContextCancel(t *testing.T) {
+	const token = "test-token"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := NewClient(token,
+		WithBaseURL(srv.URL),
+		WithHTTPClient(&http.Client{Timeout: 2 * time.Second}),
+		WithMinInterval(2*time.Second),
+	)
+
+	if _, err := c.RecentNearby(context.Background(), 40.00, -105.00, 10, 7, 25); err != nil {
+		t.Fatalf("RecentNearby error: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	_, err := c.RecentNearby(ctx, 40.00, -105.00, 10, 7, 25)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("expected quick cancel, took %v", elapsed)
+	}
+}

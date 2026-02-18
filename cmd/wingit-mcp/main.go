@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/kpb/wingit-mcp/internal/prompts"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -74,6 +76,28 @@ If there are no targets, explain that there are no likely new lifers for this qu
 	s.AddPrompt(prompt, promptHandler)
 }
 
+func parseLatLon(input string) (float64, float64, error) {
+	parts := strings.Split(strings.TrimSpace(input), ",")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("location must be \"lat,lon\" (example: \"42.47,-76.45\")")
+	}
+	lat, err := strconv.ParseFloat(strings.TrimSpace(parts[0]), 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("latitude must be a number between -90 and 90 (example: \"42.47\"): %w", err)
+	}
+	lon, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("longitude must be a number between -180 and 180 (example: \"-76.45\"): %w", err)
+	}
+	if lat < -90 || lat > 90 {
+		return 0, 0, fmt.Errorf("latitude %v out of range; must be between -90 and 90", lat)
+	}
+	if lon < -180 || lon > 180 {
+		return 0, 0, fmt.Errorf("longitude %v out of range; must be between -180 and 180", lon)
+	}
+	return lat, lon, nil
+}
+
 func main() {
 	// IMPORTANT: stdio servers must not write to stdout; use stderr for logs
 	logger := log.New(os.Stderr, "wingit-mcp: ", log.LstdFlags|log.Lmsgprefix)
@@ -119,7 +143,19 @@ func main() {
 				recent = rows
 			}
 		} else {
-			logger.Printf("INFO: WINGIT_RECENT_JSON not set; continuing with empty recent")
+			client, err := ebird.NewClientFromEnv()
+			if err != nil {
+				return nil, nil, err
+			}
+			lat, lon, err := parseLatLon(args.Location)
+			if err != nil {
+				return nil, nil, err
+			}
+			rows, err := client.RecentNearby(ctx, lat, lon, args.RadiusKm, args.DaysBack, 0)
+			if err != nil {
+				return nil, nil, err
+			}
+			recent = rows
 		}
 
 		// Adapt internal/types -> engine's RecentObservation

@@ -8,8 +8,10 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kpb/wingit-mcp/internal/types"
@@ -26,10 +28,13 @@ var (
 )
 
 type Client struct {
-	baseURL    string
-	token      string
-	httpClient *http.Client
-	userAgent  string
+	baseURL     string
+	token       string
+	httpClient  *http.Client
+	userAgent   string
+	minInterval time.Duration
+	rateMu      sync.Mutex
+	lastRequest time.Time
 }
 
 type Option func(*Client)
@@ -46,6 +51,10 @@ func WithUserAgent(ua string) Option {
 	return func(c *Client) { c.userAgent = ua }
 }
 
+func WithMinInterval(d time.Duration) Option {
+	return func(c *Client) { c.minInterval = d }
+}
+
 func NewClient(token string, opts ...Option) *Client {
 	c := &Client{
 		baseURL: defaultBaseURL,
@@ -54,11 +63,53 @@ func NewClient(token string, opts ...Option) *Client {
 			Timeout: 15 * time.Second,
 		},
 		userAgent: "wingit-mcp/0.2.0 (+https://github.com/kpb/wingit-mcp)",
+		// Simple pacing for eBird rate limits (1 request per second).
+		minInterval: time.Second,
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
 	return c
+}
+
+func NewClientFromEnv(opts ...Option) (*Client, error) {
+	token := strings.TrimSpace(os.Getenv("WINGIT_EBIRD_TOKEN"))
+	if token == "" {
+		return nil, fmt.Errorf("%w: WINGIT_EBIRD_TOKEN not set", ErrUnauthorized)
+	}
+	return NewClient(token, opts...), nil
+}
+
+func (c *Client) waitForRateLimit(ctx context.Context) error {
+	if c.minInterval <= 0 {
+		return nil
+	}
+
+	c.rateMu.Lock()
+	now := time.Now()
+	next := now
+	if !c.lastRequest.IsZero() {
+		next = c.lastRequest.Add(c.minInterval)
+		if next.Before(now) {
+			next = now
+		}
+	}
+	c.lastRequest = next
+	c.rateMu.Unlock()
+
+	wait := time.Until(next)
+	if wait <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // RecentNearby calls:
@@ -74,6 +125,10 @@ func (c *Client) RecentNearby(
 ) ([]types.RecentObservation, error) {
 	if c.token == "" {
 		return nil, fmt.Errorf("%w: missing API token", ErrUnauthorized)
+	}
+
+	if err := c.waitForRateLimit(ctx); err != nil {
+		return nil, fmt.Errorf("ebird: rate limit wait: %w", err)
 	}
 
 	// Clamp to eBird documented ranges (engine may normalize too)
