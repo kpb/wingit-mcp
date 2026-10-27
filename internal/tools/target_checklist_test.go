@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -57,6 +58,43 @@ func Test_build_target_checklist_filters_seen_and_heard_only(t *testing.T) {
 		got.Filters.MinFrequency != args.MinFrequency ||
 		got.Filters.MaxSpecies != args.MaxSpecies {
 		t.Fatalf("filters echo mismatch: %#v", got.Filters)
+	}
+}
+
+func TestNormalizeTargetArgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		args       TargetArgs
+		wantRadius float64
+		wantDays   int
+		wantErr    bool
+	}{
+		{name: "defaults", args: TargetArgs{Location: "somewhere"}, wantRadius: 20, wantDays: 7},
+		{name: "non-positive values use defaults", args: TargetArgs{Location: "somewhere", RadiusKm: -2, DaysBack: -4}, wantRadius: 20, wantDays: 7},
+		{name: "API maxima are clamped", args: TargetArgs{Location: "somewhere", RadiusKm: 51, DaysBack: 31}, wantRadius: 50, wantDays: 30},
+		{name: "valid values preserved", args: TargetArgs{Location: "somewhere", RadiusKm: 12.5, DaysBack: 3}, wantRadius: 12.5, wantDays: 3},
+		{name: "reject non-finite radius", args: TargetArgs{Location: "somewhere", RadiusKm: math.Inf(1)}, wantErr: true},
+		{name: "reject non-finite minimum frequency", args: TargetArgs{Location: "somewhere", MinFrequency: math.NaN()}, wantErr: true},
+		{name: "reject blank location", args: TargetArgs{Location: "  "}, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := NormalizeTargetArgs(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("NormalizeTargetArgs() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if got.RadiusKm != tt.wantRadius || got.DaysBack != tt.wantDays {
+				t.Errorf("normalized radius/days = %v/%v, want %v/%v", got.RadiusKm, got.DaysBack, tt.wantRadius, tt.wantDays)
+			}
+		})
 	}
 }
 

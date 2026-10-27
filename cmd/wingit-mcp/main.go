@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -17,6 +18,35 @@ import (
 	it "github.com/kpb/wingit-mcp/internal/types"
 )
 
+type recentObservationLoader func(context.Context, tools.TargetArgs) ([]it.RecentObservation, error)
+
+func buildTargetChecklist(ctx context.Context, args tools.TargetArgs, seen map[string]struct{}, loadRecent recentObservationLoader) (tools.TargetResult, error) {
+	args, err := tools.NormalizeTargetArgs(args)
+	if err != nil {
+		return tools.TargetResult{}, err
+	}
+
+	recent, err := loadRecent(ctx, args)
+	if err != nil {
+		return tools.TargetResult{}, err
+	}
+
+	engineRecent := make([]tools.RecentObservation, 0, len(recent))
+	for _, r := range recent {
+		engineRecent = append(engineRecent, tools.RecentObservation{
+			SpeciesCode: r.SpeciesCode,
+			CommonName:  r.CommonName,
+			SciName:     r.SciName,
+			LocName:     r.LocName,
+			LocID:       r.LocID,
+			ObsDt:       r.ObsDt,
+			HeardOnly:   r.HeardOnly,
+		})
+	}
+
+	return tools.BuildTargetChecklist(ctx, args, seen, engineRecent)
+}
+
 func parseLatLon(input string) (float64, float64, error) {
 	parts := strings.Split(strings.TrimSpace(input), ",")
 	if len(parts) != 2 {
@@ -26,9 +56,15 @@ func parseLatLon(input string) (float64, float64, error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("latitude must be a number between -90 and 90 (example: \"42.47\"): %w", err)
 	}
+	if math.IsNaN(lat) || math.IsInf(lat, 0) {
+		return 0, 0, fmt.Errorf("latitude must be a finite number between -90 and 90")
+	}
 	lon, err := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
 	if err != nil {
 		return 0, 0, fmt.Errorf("longitude must be a number between -180 and 180 (example: \"-76.45\"): %w", err)
+	}
+	if math.IsNaN(lon) || math.IsInf(lon, 0) {
+		return 0, 0, fmt.Errorf("longitude must be a finite number between -180 and 180")
 	}
 	if lat < -90 || lat > 90 {
 		return 0, 0, fmt.Errorf("latitude %v out of range; must be between -90 and 90", lat)
@@ -72,49 +108,29 @@ func main() {
 		Name:        "target_checklist",
 		Description: "Return likely new lifers near a location by comparing recent eBird observations with your personal history.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args tools.TargetArgs) (*mcp.CallToolResult, any, error) {
-		// Load "recent nearby" from env JSON (offline demo path for now).
 		recentPath := os.Getenv("WINGIT_RECENT_JSON")
-		var recent []it.RecentObservation
-		if recentPath != "" {
-			rows, err := ebird.LoadRecentNearby(recentPath)
-			if err != nil {
-				// Fail softly: log and continue with empty recent data.
-				logger.Printf("WARN: LoadRecentNearby(%q): %v (continuing with empty recent)", recentPath, err)
-			} else {
-				recent = rows
+		out, err := buildTargetChecklist(ctx, args, seen, func(ctx context.Context, normalized tools.TargetArgs) ([]it.RecentObservation, error) {
+			// Load "recent nearby" from env JSON (offline demo path for now).
+			if recentPath != "" {
+				rows, err := ebird.LoadRecentNearby(recentPath)
+				if err != nil {
+					// Fail softly: log and continue with empty recent data.
+					logger.Printf("WARN: LoadRecentNearby(%q): %v (continuing with empty recent)", recentPath, err)
+					return nil, nil
+				}
+				return rows, nil
 			}
-		} else {
+
 			client, err := ebird.NewClientFromEnv()
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
-			lat, lon, err := parseLatLon(args.Location)
+			lat, lon, err := parseLatLon(normalized.Location)
 			if err != nil {
-				return nil, nil, err
+				return nil, err
 			}
-			rows, err := client.RecentNearby(ctx, lat, lon, args.RadiusKm, args.DaysBack, 0)
-			if err != nil {
-				return nil, nil, err
-			}
-			recent = rows
-		}
-
-		// Adapt internal/types -> engine's RecentObservation
-		engineRecent := make([]tools.RecentObservation, 0, len(recent))
-		for _, r := range recent {
-			engineRecent = append(engineRecent, tools.RecentObservation{
-				SpeciesCode: r.SpeciesCode,
-				CommonName:  r.CommonName,
-				SciName:     r.SciName,
-				LocName:     r.LocName,
-				LocID:       r.LocID,
-				ObsDt:       r.ObsDt,
-				HeardOnly:   r.HeardOnly,
-			})
-		}
-
-		// Call the pure engine.
-		out, err := tools.BuildTargetChecklist(ctx, args, seen, engineRecent)
+			return client.RecentNearby(ctx, lat, lon, normalized.RadiusKm, normalized.DaysBack, 0)
+		})
 		if err != nil {
 			return nil, nil, err
 		}

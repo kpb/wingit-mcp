@@ -31,6 +31,10 @@ Examples:
 - `location=" 42.47 , -76.45 "`
 
 Latitude must be between -90 and 90, and longitude between -180 and 180.
+For `target_checklist`, a non-positive `radiusKm` uses the 20 km default and a
+non-positive `daysBack` uses the 7 day default. Values above eBird's limits are
+clamped to 50 km and 30 days respectively. Non-finite coordinates and numeric
+query values are rejected.
 
 ## Roadmap
 

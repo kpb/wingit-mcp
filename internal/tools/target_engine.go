@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -60,18 +61,15 @@ const (
 )
 
 // BuildTargetChecklist is the pure engine the MCP tool will call.
-// This minimal implementation passes the tests and is a sane starting point.
 // Ranking: by RecentFrequency (desc), then by recency (ObsDt desc), then stable.
 func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[string]struct{}, recent []RecentObs) (targetResult, error) {
 	var out targetResult
 
-	// Hard validation: we require *some* location string.
-	if strings.TrimSpace(args.Location) == "" {
-		return out, fmt.Errorf("location is required")
+	var err error
+	args, err = NormalizeTargetArgs(args)
+	if err != nil {
+		return out, err
 	}
-
-	// Soft validation: normalize obviously bad numeric inputs.
-	args = normalizeArgs(args)
 
 	out.Filters.Location = args.Location
 	out.Filters.RadiusKm = args.RadiusKm
@@ -142,13 +140,29 @@ func BuildTargetChecklist(_ context.Context, args targetArgs, personalSeen map[s
 	return out, nil
 }
 
-// normalizeArgs clamps obviously bad numeric values to sane defaults.
-func normalizeArgs(a targetArgs) targetArgs {
+// NormalizeTargetArgs validates and normalizes the shared query used for both
+// observation loading and result filters. Non-positive radius/days use defaults;
+// values above the eBird API limits are clamped to those limits.
+func NormalizeTargetArgs(a TargetArgs) (TargetArgs, error) {
+	if strings.TrimSpace(a.Location) == "" {
+		return a, fmt.Errorf("location is required")
+	}
+	if math.IsNaN(a.RadiusKm) || math.IsInf(a.RadiusKm, 0) {
+		return a, fmt.Errorf("radiusKm must be a finite number")
+	}
+	if math.IsNaN(a.MinFrequency) || math.IsInf(a.MinFrequency, 0) {
+		return a, fmt.Errorf("minFrequency must be a finite number")
+	}
+
 	if a.RadiusKm <= 0 {
 		a.RadiusKm = defaultRadiusKm
+	} else if a.RadiusKm > 50 {
+		a.RadiusKm = 50
 	}
 	if a.DaysBack <= 0 {
 		a.DaysBack = defaultDaysBack
+	} else if a.DaysBack > 30 {
+		a.DaysBack = 30
 	}
 	if a.MaxSpecies <= 0 {
 		a.MaxSpecies = defaultMaxSpecies
@@ -159,5 +173,5 @@ func normalizeArgs(a targetArgs) targetArgs {
 	if a.MinFrequency > 1 {
 		a.MinFrequency = 1
 	}
-	return a
+	return a, nil
 }
