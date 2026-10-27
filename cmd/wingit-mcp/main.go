@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/kpb/wingit-mcp/internal/prompts"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -19,6 +20,45 @@ import (
 )
 
 type recentObservationLoader func(context.Context, tools.TargetArgs) ([]it.RecentObservation, error)
+
+type liveClientProvider struct {
+	once    sync.Once
+	factory func() (*ebird.Client, error)
+	client  *ebird.Client
+	err     error
+}
+
+func newLiveClientProvider(factory func() (*ebird.Client, error)) *liveClientProvider {
+	return &liveClientProvider{factory: factory}
+}
+
+func (p *liveClientProvider) get() (*ebird.Client, error) {
+	p.once.Do(func() {
+		p.client, p.err = p.factory()
+	})
+	return p.client, p.err
+}
+
+type recentObservationSource struct {
+	offlinePath string
+	liveClient  *liveClientProvider
+}
+
+func (s recentObservationSource) load(ctx context.Context, args tools.TargetArgs) ([]it.RecentObservation, error) {
+	if s.offlinePath != "" {
+		return ebird.LoadRecentNearby(s.offlinePath)
+	}
+
+	client, err := s.liveClient.get()
+	if err != nil {
+		return nil, err
+	}
+	lat, lon, err := parseLatLon(args.Location)
+	if err != nil {
+		return nil, err
+	}
+	return client.RecentNearby(ctx, lat, lon, args.RadiusKm, args.DaysBack, 0)
+}
 
 func buildTargetChecklist(ctx context.Context, args tools.TargetArgs, seen map[string]struct{}, loadRecent recentObservationLoader) (tools.TargetResult, error) {
 	args, err := tools.NormalizeTargetArgs(args)
@@ -92,6 +132,9 @@ func main() {
 	}
 	seen := ebird.BuildPersonalSeenSet(pc)
 	logger.Printf("loaded personal checklist: species=%d (seen set size)", len(seen))
+	liveClient := newLiveClientProvider(func() (*ebird.Client, error) {
+		return ebird.NewClientFromEnv()
+	})
 
 	s := mcp.NewServer(&mcp.Implementation{
 		Name:    "wingit-mcp",
@@ -110,26 +153,17 @@ func main() {
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args tools.TargetArgs) (*mcp.CallToolResult, any, error) {
 		recentPath := os.Getenv("WINGIT_RECENT_JSON")
 		out, err := buildTargetChecklist(ctx, args, seen, func(ctx context.Context, normalized tools.TargetArgs) ([]it.RecentObservation, error) {
-			// Load "recent nearby" from env JSON (offline demo path for now).
-			if recentPath != "" {
-				rows, err := ebird.LoadRecentNearby(recentPath)
-				if err != nil {
+			source := recentObservationSource{offlinePath: recentPath, liveClient: liveClient}
+			rows, err := source.load(ctx, normalized)
+			if err != nil {
+				if recentPath != "" {
 					// Fail softly: log and continue with empty recent data.
 					logger.Printf("WARN: LoadRecentNearby(%q): %v (continuing with empty recent)", recentPath, err)
 					return nil, nil
 				}
-				return rows, nil
-			}
-
-			client, err := ebird.NewClientFromEnv()
-			if err != nil {
 				return nil, err
 			}
-			lat, lon, err := parseLatLon(normalized.Location)
-			if err != nil {
-				return nil, err
-			}
-			return client.RecentNearby(ctx, lat, lon, normalized.RadiusKm, normalized.DaysBack, 0)
+			return rows, nil
 		})
 		if err != nil {
 			return nil, nil, err
